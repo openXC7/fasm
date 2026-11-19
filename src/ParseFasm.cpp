@@ -19,6 +19,10 @@
 #include "FasmParserVisitor.h"
 #include "antlr4-runtime.h"
 
+#include <limits>
+#include <stdexcept>
+#include <string>
+
 /// This code parses FASM and produces a lightweight binary format that
 /// is fast and simple to unpack based on the tag/length/value (TLV)
 /// format.
@@ -197,6 +201,28 @@ struct ParseException {
         std::string message;  ///< A descriptive message.
 };
 
+/// Decode an INT token as the 32-bit number that Num stores, raising a
+/// ParseException rather than letting std::stoul throw or truncating the
+/// value.
+static uint32_t parse_uint32(antlr4::tree::TerminalNode* node,
+                             const char* what) {
+        const std::string text = node->getText();
+        try {
+                size_t end;
+                unsigned long long value = std::stoull(text, &end, 10);
+                if (end == text.size() &&
+                    value <= std::numeric_limits<uint32_t>::max()) {
+                        return value;
+                }
+        } catch (const std::exception&) {
+        }
+        throw ParseException{
+            .line = node->getSymbol()->getLine(),
+            .position = node->getSymbol()->getCharPositionInLine(),
+            .message = std::string("Could not decode ") + what + " '" + text +
+                       "' (it must fit in 32 bits)."};
+}
+
 /// Helper macro to convert a rule context into a string
 /// For use inside FasmParserBaseVisitor
 #define GET(x) (context->x() ? visit(context->x()).as<std::string>() : "")
@@ -265,10 +291,10 @@ class FasmParserBaseVisitor : public FasmParserVisitor {
         virtual Any visitFeatureAddress(
             FasmParser::FeatureAddressContext* context) override {
                 std::ostringstream data;
-                data << Num(std::stoul(context->INT(0)->getText()));
+                data << Num(parse_uint32(context->INT(0), "address"));
 
                 if (context->INT(1)) {
-                        data << Num(std::stoul(context->INT(1)->getText()));
+                        data << Num(parse_uint32(context->INT(1), "address"));
                 }
                 return withHeader(TAG(':', address), data.str());
         }
@@ -283,7 +309,7 @@ class FasmParserBaseVisitor : public FasmParserVisitor {
                         if (context->INT()) {
                                 data << Num(
                                     TAG('\'', width),
-                                    std::stoi(context->INT()->getText()));
+                                    parse_uint32(context->INT(), "bit width"));
                         }
                         data << visit(context->verilogDigits())
                                     .as<std::string>();
@@ -517,6 +543,12 @@ void from_string(const char* in,
         } catch (ParseException e) {
                 // Parse failure will throw this exception.
                 err(e.line, e.position, e.message.c_str());
+        } catch (const std::range_error&) {
+                // ANTLRInputStream converts the input to UTF-32.
+                err(0, 0, "Input is not valid UTF-8.");
+        } catch (const std::exception& e) {
+                // Report anything else rather than aborting the process.
+                err(0, 0, e.what());
         }
 }
 
@@ -539,6 +571,13 @@ void from_file(const char* path,
                 } catch (ParseException e) {
                         // Parse failure will throw this exception.
                         err(e.line, e.position, e.message.c_str());
+                } catch (const std::range_error&) {
+                        // ANTLRInputStream converts the input to UTF-32.
+                        err(0, 0, "Input is not valid UTF-8.");
+                } catch (const std::exception& e) {
+                        // Report anything else rather than aborting the
+                        // process.
+                        err(0, 0, e.what());
                 }
         } else {
                 err(0, 0, "Couldn't open file");

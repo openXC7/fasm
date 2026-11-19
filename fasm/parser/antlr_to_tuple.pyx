@@ -52,7 +52,7 @@ def tagged_string_from_bytes(tag, data, i):
     if length == -1:
         return None, i
 
-    return data[i:i + length].decode('ascii'), i + length
+    return data[i:i + length].decode('utf-8'), i + length
 
 
 def fasm_address_from_bytes(data, i):
@@ -131,7 +131,14 @@ def fasm_set_feature_from_bytes(data, i):
         assert value < 2 ** width, \
             "value {} larger than specified width of {}".format(value, width)
 
-    assert value < 2**address_width(start, end), (value, start, end)
+    if start is None:
+        address = 'a feature without an address (1 bit)'
+    elif end is None:
+        address = 'address [{}] (1 bit)'.format(start)
+    else:
+        address = 'address [{}:{}]'.format(end, start)
+    assert value < 2**address_width(start, end), \
+        "value {} does not fit in {}".format(value, address)
 
     return SetFasmFeature(
         feature=feature,

@@ -20,6 +20,7 @@
 import os
 import os.path
 import importlib
+import tempfile
 
 import unittest
 import fasm
@@ -95,6 +96,42 @@ class TestFasm(unittest.TestCase):
             with self.subTest(name, parser=name):
                 result = list(parser.parse_fasm_filename(example('many.fasm')))
                 check_round_trip(self, parser, result)
+
+    def test_value_does_not_fit(self):
+        for name, parser in parsers.items():
+            for s in ("A.B[3:0] = 4'd99", "A.B[3:0] = 99", "A.B[0:63] = 1",
+                      "A.B = 2"):
+                with self.subTest(name, parser=name, fasm=s):
+                    with self.assertRaises(AssertionError):
+                        list(parser.parse_fasm_string(s))
+
+    def test_non_ascii_comment(self):
+        for name, parser in parsers.items():
+            with self.subTest(name, parser=name):
+                result = list(parser.parse_fasm_string('A.B # caf\u00e9'))
+                self.assertEqual(result[0].comment, ' caf\u00e9')
+
+    @unittest.skipUnless('antlr' in parsers, 'needs the ANTLR parser')
+    def test_antlr_errors(self):
+        parser = parsers['antlr']
+        for s in ('A.B[4294967296]', 'A.B[99999999999999999999]',
+                  "A.B = 4294967296'd1"):
+            with self.subTest(fasm=s):
+                with self.assertRaisesRegex(Exception, 'Parse error.*32 bits'):
+                    parser.parse_fasm_string(s)
+        # The largest address still works.
+        self.assertEqual(
+            parser.parse_fasm_string('A.B[4294967295]')[0].set_feature.start,
+            4294967295)
+
+    @unittest.skipUnless('antlr' in parsers, 'needs the ANTLR parser')
+    def test_antlr_invalid_utf8(self):
+        parser = parsers['antlr']
+        with tempfile.NamedTemporaryFile(suffix='.fasm') as f:
+            f.write(b'# caf\xe9\nA.B\n')
+            f.flush()
+            with self.assertRaisesRegex(Exception, 'not valid UTF-8'):
+                parser.parse_fasm_filename(f.name)
 
     def test_implementations(self):
         self.assertTrue('antlr' in fasm.parser.available)
