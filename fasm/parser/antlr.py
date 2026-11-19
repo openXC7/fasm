@@ -60,17 +60,23 @@ def parse_fasm_string(s):
     def callback(s, n):
         data = s[:n]
         assert len(data) == n
-        result[0] = antlr_to_tuple.parse_fasm_data(data)
-        error[0] = None
+        # An exception raised here would only be printed by ctypes, so keep
+        # it and raise it once the parser has returned.
+        try:
+            result[0] = antlr_to_tuple.parse_fasm_data(data)
+            error[0] = None
+        except Exception as e:
+            result[0] = None
+            error[0] = e
 
     @CFUNCTYPE(None, c_size_t, c_size_t, c_char_p)
     def error_callback(line, position, message):
         result[0] = None
         error[0] = Exception(
             'Parse error at {}:{} - {}'.format(
-                line, position, message.decode('ascii')))
+                line, position, message.decode('utf-8', 'replace')))
 
-    parse_fasm.from_string(bytes(s, 'ascii'), 0, callback, error_callback)
+    parse_fasm.from_string(s.encode('utf-8'), 0, callback, error_callback)
 
     if error[0] is not None:
         raise error[0]
@@ -99,17 +105,23 @@ def parse_fasm_filename(filename):
     def callback(s, n):
         data = s[:n]
         assert len(data) == n
-        result[0] = antlr_to_tuple.parse_fasm_data(data)
-        error[0] = None
+        # An exception raised here would only be printed by ctypes, so keep
+        # it and raise it once the parser has returned.
+        try:
+            result[0] = antlr_to_tuple.parse_fasm_data(data)
+            error[0] = None
+        except Exception as e:
+            result[0] = None
+            error[0] = e
 
     @CFUNCTYPE(None, c_size_t, c_size_t, c_char_p)
     def error_callback(line, position, message):
         result[0] = None
         error[0] = Exception(
             'Parse error at {}:{} - {}'.format(
-                line, position, message.decode('ascii')))
+                line, position, message.decode('utf-8', 'replace')))
 
-    parse_fasm.from_file(bytes(filename, 'ascii'), 0, callback, error_callback)
+    parse_fasm.from_file(os.fsencode(filename), 0, callback, error_callback)
 
     if error[0] is not None:
         raise error[0]
