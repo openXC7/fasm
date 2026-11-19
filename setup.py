@@ -116,7 +116,7 @@ class AntlrCMakeBuild(build_ext):
             self.install_dirs = {}
             for ext in self.extensions:
                 if isinstance(ext, CMakeExtension):
-                    self.install_dirs[ext] = os.path.join(
+                    self.install_dirs[ext.name] = os.path.join(
                         os.path.abspath(
                             os.path.dirname(self.get_ext_fullpath(ext.name))),
                         ext.prefix)
@@ -173,7 +173,7 @@ class AntlrCMakeBuild(build_ext):
 
     def build_extension(self, ext):
         if isinstance(ext, CMakeExtension):
-            extdir = self.install_dirs[ext]
+            extdir = self.install_dirs[ext.name]
             cmake_args = [
                 '-DCMAKE_INSTALL_PREFIX=' + extdir, '-DCMAKE_INSTALL_LIBDIR=.',
                 '-DPYTHON_EXECUTABLE=' + sys.executable,
